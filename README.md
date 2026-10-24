@@ -1,135 +1,151 @@
 # StudyBuddy
 
-An AI study partner you can **FaceTime** and **text**. Schedule a study session, get an iMessage when it's time, tap to call, and study with a voice agent that knows what you planned. Every call is transcribed, summarized and saved to your history, and you can text follow-up questions about it afterwards.
+An AI study partner you can **text and FaceTime**.
 
-Built on [Chert](https://docs.trychert.com) (FaceTime lines and iMessage), [LiveKit](https://livekit.io) and OpenAI.
+You schedule a study session on the dashboard. When it's time, StudyBuddy texts your iPhone. You tap the link, FaceTime the agent, and study with a voice tutor that already knows what you planned to work on. When you hang up, the call is transcribed, summarized and saved, and you can text follow-up questions about it later.
 
-> **Prototype:** single demo user, local SQLite + JSON storage, runs on one machine.
+Built with Next.js, SQLite, OpenAI, and [Chert](https://docs.trychert.com) (FaceTime lines + iMessage) over [LiveKit](https://livekit.io).
+
+> **Status:** hackathon prototype. One demo user, local storage, runs on your machine. No real accounts.
+
+---
 
 ## How it works
 
 ```
- Dashboard (Next.js)                         Your iPhone
- ───────────────────                         ───────────
- Schedule session ──► worker ──► Chert iMessage: "Time to study! Tap to call…"
-                                                │ tap
- /study/[id] "Start call" ─────────────────────►│ FaceTime ──► Chert line ──► LiveKit room
-                                                                                 │
-                                       my-agent (voice agent, OpenAI realtime) ◄─┘
-                                       • asks /api/agent/context for today's topic
-                                       • greets on Chert's bridge_ready signal
-                                       • on hang-up posts the transcript
-                                                 │
- History ◄── data/conversations/*.json ◄── /api/ingest/call ◄─┘
-             (transcript + AI summary written by the worker)
+Dashboard ── schedule session ──► worker ──► iMessage: "Time to study! Tap to call…"
+                                                            │
+                                                      you tap & FaceTime
+                                                            │
+                        Chert line ──► LiveKit room ──► my-agent (OpenAI realtime voice)
+                                                            │  asks /api/agent/context for the topic
+                                                            │  posts transcript on hang-up
+                                                            ▼
+History ◄── AI summary ◄── worker ◄── /api/ingest/call
 
- Text the line any time ──► worker polls Chert ──► AI reply based on your call summaries
+Text the line any time ──► worker ──► reply grounded in your past call summaries
 ```
 
-The voice agent lives in a separate repo: **[rayan-sharma/my-agent](https://github.com/rayan-sharma/my-agent)** (`feat/study-buddy-vision` branch).
+Two processes in this repo (`npm run dev` + `npm run worker`) and one voice agent in a separate repo: **[rayan-sharma/my-agent](https://github.com/rayan-sharma/my-agent)**.
+
+---
 
 ## Features
 
-| | |
-|---|---|
-| **Tasks & notes** | Dashboard tasks and notes stored in SQLite (`/api/tasks`, `/api/notes`). |
-| **Study sessions** | Alarm button on a task schedules a session; a "Time to study" banner appears when it's due. |
-| **Start-call page** | `/study/[id]`: **Start call** (opens FaceTime Video to the agent), **Snooze 10 min**, **Not now**, then back to the Dashboard. |
-| **iMessage reminders** | At session time the worker texts your verified phone a call link through Chert. If Chert isn't configured, the in-app banner is the fallback. |
-| **Text replies** | Text the line: `CALL` returns the call link, `STOP` / `RESUME` pause reminders, anything else gets a short answer grounded in your recent call summaries. |
-| **Call history** | Each FaceTime call is saved as JSON with transcript, summary, topics and "try next" questions, shown under **History**. |
-| **Demo button** | "Demo: study time now (linear algebra)" starts a session, texts you and opens FaceTime; the agent opens on linear algebra. |
-| **Canvas dashboard** | Active courses and upcoming assignments from Canvas LMS (see below). |
+- **Tasks & notes** on a dashboard, stored in SQLite.
+- **Study sessions**: pick a task, set a time, get a "Time to study" banner and an iMessage when it's due.
+- **One-tap call**: `/study/[id]` opens FaceTime to the agent; snooze or dismiss instead.
+- **Voice tutor that knows your plan**: the agent pulls the current session's topic before greeting you.
+- **Call history**: every call saved with transcript, summary, topics, and "try next" questions.
+- **Text replies**: `CALL` → call link, `STOP` / `RESUME` → pause reminders, anything else → a short answer based on your recent calls.
+- **Canvas LMS**: active courses and upcoming assignments on the dashboard.
+- **Demo button**: "Study time now (linear algebra)" runs the whole flow in one click.
+
+---
 
 ## Quick start
 
-Requirements: **Node.js 24**, a Chert project with a FaceTime line (`chert onboard`), a LiveKit Cloud project and an OpenAI API key.
+You need **Node 24**, an **OpenAI API key**, and for calls/texts a **Chert project** with a FaceTime line (`chert onboard`) plus a **LiveKit Cloud** project.
 
 ```bash
 npm install
-cp .env.example .env.local   # then fill it in, see below
-npm run seed                 # demo tasks and notes
-npm run dev                  # web app on http://localhost:3000
-npm run worker               # second terminal: summaries, reminders, iMessage replies
+cp .env.example .env.local     # fill in, see Configuration
+npm run seed                   # demo tasks & notes
+npm run dev                    # http://localhost:3000
+npm run worker                 # 2nd terminal: reminders, summaries, text replies
 ```
 
-Then start the voice agent (in the `my-agent` repo) in two more terminals:
+Then, in the `my-agent` repo:
 
 ```bash
-npm start                                              # the LiveKit agent
-npx @trychert/facetime@0.1.0-beta.10 dev --agent my-agent   # puts it on your Chert line
+npm start                                                   # LiveKit voice agent
+npx @trychert/facetime@0.1.0-beta.10 dev --agent my-agent   # attach it to your Chert line
 ```
 
-Open <http://localhost:3000/Dashboard> and press **Demo: study time now**, or FaceTime your line.
+Open <http://localhost:3000/Dashboard> → **Demo: study time now**, or just FaceTime your line.
+
+Without Chert keys the app still runs: reminders show in the web app only and nothing is sent.
+
+---
 
 ## Configuration (`.env.local`)
 
-All values are server-only; never prefix them with `NEXT_PUBLIC_` and never commit `.env.local`.
+Server-only. Never prefix with `NEXT_PUBLIC_`, never commit.
 
-| Variable | What it is |
+| Variable | Purpose |
 |---|---|
-| `OPENAI_API_KEY` | Used for call summaries and text replies. |
-| `OPENAI_TEXT_MODEL` | Defaults to `gpt-5.4-mini`. |
-| `INGEST_SECRET` | Shared secret; the same value goes in `my-agent/.env.local` (with `BACKEND_URL=http://localhost:3000`). Protects `/api/ingest/call` and `/api/agent/context`. Generate with `openssl rand -hex 32`. |
-| `CHERT_API_KEY` | Chert console → project → Developer → API keys → Create (allow write). Without it, reminders are web-only. |
-| `CHERT_PROJECT_ID` | Optional; your Chert project id (sent as `X-Chert-Project-Id`). |
-| `CHERT_LINE_ID` | Optional; otherwise the line matching `FACETIME_LINE_ADDRESS` is used. `npm run chert:check` shows it. |
-| `CHERT_MAX_PER_HOUR` | Text budget per hour (Chert trial: 10, hackathon: 100). |
-| `DEMO_USER_PHONE` | The phone verified with `chert onboard` (E.164). Texts can only go to this number. |
-| `FACETIME_LINE_ADDRESS` | Your agent's FaceTime number, used in call links. Update it if `chert onboard` assigns a new line. |
-| `DATABASE_PATH`, `DEMO_TIMEZONE`, `DEMO_MODE` | Local SQLite file, display time zone, demo flag. |
-| `CANVAS_BASE_URL` | Canvas instance for the course dashboard. |
+| `OPENAI_API_KEY` | Call summaries and text replies. |
+| `OPENAI_TEXT_MODEL` | Default `gpt-5.4-mini`. |
+| `INGEST_SECRET` | Shared secret with `my-agent` (same value there, plus `BACKEND_URL=http://localhost:3000`). Protects `/api/ingest/call` and `/api/agent/context`. `openssl rand -hex 32`. |
+| `CHERT_API_KEY` | Chert console → Developer → API keys (write). Enables iMessage. |
+| `CHERT_PROJECT_ID` | Optional. Sent as `X-Chert-Project-Id`. |
+| `CHERT_LINE_ID` | Optional. Defaults to the line matching `FACETIME_LINE_ADDRESS`. |
+| `CHERT_MAX_PER_HOUR` | Text budget (trial 10, hackathon 100). |
+| `DEMO_USER_PHONE` | Your verified phone, E.164. Texts only go here. |
+| `FACETIME_LINE_ADDRESS` | The agent's FaceTime number, used in call links. |
+| `DATABASE_PATH` / `DEMO_TIMEZONE` / `DEMO_MODE` | SQLite path, display zone, demo flag. |
+| `CANVAS_BASE_URL` | Your Canvas instance, e.g. `https://school.instructure.com`. |
 
-Check the Chert setup without sending anything: `npm run chert:check`.
+`npm run chert:check` verifies the Chert setup read-only (lists lines and recent messages, numbers masked).
+
+---
 
 ## Scripts
 
-| Script | |
+| | |
 |---|---|
-| `npm run dev` | Next.js dev server. |
-| `npm run worker` | Background worker: summarizes calls, sends reminder texts, answers iMessage replies (polls every 5 s). |
-| `npm run seed` | Load the demo tasks and notes (`-- --reset` to start over). |
-| `npm run chert:check` | Read-only: lists your Chert lines and recent messages (numbers masked). |
-| `npm run lint` / `npm run build` | Lint / production build. |
+| `npm run dev` | Next.js dev server |
+| `npm run worker` | Background loop (5 s): summarize calls, send reminders, answer texts |
+| `npm run seed` | Demo data (`-- --reset` to wipe) |
+| `npm run chert:check` | Read-only Chert diagnostics |
+| `npm run lint` / `npm run build` | Lint / production build |
+
+---
 
 ## API
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/state` | GET | Tasks, notes, next session, active session, call line (Dashboard polls every 3 s). |
-| `/api/tasks`, `/api/tasks/[id]` | POST / PATCH / DELETE | Tasks. |
-| `/api/notes`, `/api/notes/[id]` | POST / PATCH / DELETE | Notes. |
-| `/api/commitments`, `/api/commitments/[id]` | POST / GET / PATCH | Schedule, snooze (`{action:"snooze"}`) or cancel a study session. |
-| `/api/calls/start` | POST | Start the session and get the FaceTime link. |
-| `/api/demo/start` | POST | Run the linear algebra demo. |
-| `/api/conversations`, `/api/conversations/[id]` | GET | Call and iMessage history. |
-| `/api/ingest/call` | POST | Voice agent posts a call transcript (`Authorization: Bearer $INGEST_SECRET`). |
-| `/api/agent/context` | GET | Voice agent asks for the current session topic (same secret). |
-| `/api/canvas/dashboard` | GET | Canvas courses and assignments. |
+| `/api/state` | GET | Everything the dashboard polls: tasks, notes, next/active session, call line |
+| `/api/tasks`, `/api/tasks/[id]` | POST / PATCH / DELETE | Tasks |
+| `/api/notes`, `/api/notes/[id]` | POST / PATCH / DELETE | Notes |
+| `/api/commitments`, `/api/commitments/[id]` | POST / GET / PATCH | Schedule, snooze (`{action:"snooze"}`), cancel a session |
+| `/api/calls/start` | POST | Start the session, return the FaceTime link |
+| `/api/demo/start` | POST | Run the linear algebra demo |
+| `/api/conversations`, `/api/conversations/[id]` | GET | Call + iMessage history |
+| `/api/ingest/call` | POST | Voice agent posts a transcript (`Bearer $INGEST_SECRET`) |
+| `/api/agent/context` | GET | Voice agent fetches the current topic (same secret) |
+| `/api/canvas/dashboard` | GET | Canvas courses and assignments |
 
-## Data
+---
 
-Everything is local and git-ignored under `data/`:
+## Project layout
 
-- `data/studybuddy.db`: SQLite (tasks, notes, sessions, job queue).
-- `data/conversations/<id>.json`: one file per call or iMessage thread (transcript + summary).
-- `data/chert-state.json`: which texts were already handled and the hourly send count.
-
-## Canvas course dashboard
-
-The dashboard can load active courses and upcoming assignments from a Canvas LMS instance. Set the server-side instance URL in `.env.local`:
-
-```text
-CANVAS_BASE_URL=https://your-school.instructure.com
+```
+app/
+  Dashboard/            main UI
+  study/[id]/           start-call page
+  login/                placeholder (redirects to Dashboard)
+  api/                  route handlers (see API)
+  components/           dashboard, history, Canvas, landing page
+lib/server/             server-only: db, chert, imessage, calls, jobs, summarize, openai, …
+scripts/
+  worker.ts             background worker
+  seed.ts               demo data
+  chert-check.ts        Chert diagnostics
+data/                   git-ignored local state
+  studybuddy.db         SQLite: tasks, notes, sessions, job queue
+  conversations/*.json  one file per call / text thread (transcript + summary)
+  chert-state.json      handled messages + hourly send count
 ```
 
-Open the dashboard's D2L section and connect with a personal Canvas access token. The token is sent to this app's backend in an authorization header and is not saved by the app. Treat it like a password, do not put it in source code, and disconnect or close the dashboard when finished. Your Canvas administrator may disable personal access tokens; if so, ask them about an approved Canvas integration.
+---
 
 ## Known limitations
 
-- **No outbound calls yet.** Chert's shared lines are inbound-only from the CLI, so "Start call" opens FaceTime on your device and you call the agent.
-- **Seeing your camera is not yet verified.** The agent is wired to read your camera on FaceTime Video calls, but whether Chert passes the caller's video into the room hasn't been confirmed. Until it does, the agent says it can't see you rather than guessing.
-- **Chert sessions expire.** If calls stop arriving, check `chert onboard --status`; re-verifying may assign a new number (update `FACETIME_LINE_ADDRESS`).
-- **Texts:** only to the verified phone, text only, rate-limited per hour.
-- **Single demo user;** no real accounts or auth on the web routes yet.
-- `npm run build` currently fails type-checking in unused copied files (`app/components/page/ui/*`, `app/components/library/ai/client.ts`); `npm run dev` is unaffected.
+- **Inbound calls only.** Chert shared lines can't dial out, so "Start call" opens FaceTime on *your* phone and you call the agent.
+- **Camera not verified.** The agent is wired for vision, but whether Chert forwards caller video into the room is unconfirmed. It says "I can't see you" rather than guessing.
+- **Chert sessions expire** (~1 h). If calls stop, run `chert onboard --status`; re-verifying may assign a new number → update `FACETIME_LINE_ADDRESS`.
+- **Texts** go only to the one verified phone, text-only, rate-limited.
+- **No auth.** The login page is cosmetic; web routes are open. Single demo user.
+- `npm run build` fails type-checking on unused copied files under `app/components/page/ui/*` and `app/components/library/ai/client.ts`. `npm run dev` is unaffected.
